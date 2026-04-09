@@ -20,23 +20,25 @@ if __name__ == '__main__':
         except:
             print("Warning: failed to XInitThreads()")
 
-from PyQt5 import Qt
-from gnuradio import qtgui
-from gnuradio.filter import firdes
-import sip
+from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import digital
 from gnuradio import filter
+from gnuradio.filter import firdes
 from gnuradio import gr
 from gnuradio.fft import window
 import sys
 import signal
+from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
 from gnuradio import network
 from gnuradio import pdu
+from gnuradio import qtgui
+from gnuradio import uhd
+import time
 import satellites
 
 
@@ -82,73 +84,61 @@ class AX25_Tx(gr.top_block, Qt.QWidget):
         self.multiplier = multiplier = 10
         self.data_rate = data_rate = 9600
         self.samp_rate = samp_rate = data_rate*multiplier
-        self.freq = freq = 145.835E6
+        self.rf_multiplier = rf_multiplier = 1
+        self.freq = freq = 145830000
 
         ##################################################
         # Blocks
         ##################################################
+        if "int" == "int":
+        	isFloat = False
+        	scaleFactor = 1
+        else:
+        	isFloat = True
+        	scaleFactor = 1
+
+        _freq_dial_control = qtgui.GrDialControl('Frequency', self, 145780000,145880000,145830000,"default",self.set_freq,isFloat, scaleFactor, 100, True, "'value'")
+        self.freq = _freq_dial_control
+
+        self.top_layout.addWidget(_freq_dial_control)
+        self.uhd_usrp_sink_0 = uhd.usrp_sink(
+            ",".join(("", '')),
+            uhd.stream_args(
+                cpu_format="fc32",
+                args='',
+                channels=list(range(0,1)),
+            ),
+            "",
+        )
+        self.uhd_usrp_sink_0.set_samp_rate(samp_rate*rf_multiplier)
+        self.uhd_usrp_sink_0.set_time_unknown_pps(uhd.time_spec(0))
+
+        self.uhd_usrp_sink_0.set_center_freq(freq, 0)
+        self.uhd_usrp_sink_0.set_antenna("TX/RX", 0)
+        self.uhd_usrp_sink_0.set_normalized_gain(1, 0)
         self.satellites_nrzi_encode_0 = satellites.nrzi_encode()
         self.satellites_kiss_to_pdu_0 = satellites.kiss_to_pdu(True)
         self.satellites_hdlc_framer_0 = satellites.hdlc_framer(preamble_bytes=48, postamble_bytes=8)
-        self.qtgui_eye_sink_x_0 = qtgui.eye_sink_f(
-            512, #size
-            samp_rate, #samp_rate
-            1, #number of inputs
-            None
-        )
-        self.qtgui_eye_sink_x_0.set_update_time(0.10)
-        self.qtgui_eye_sink_x_0.set_samp_per_symbol(multiplier)
-        self.qtgui_eye_sink_x_0.set_y_axis(-1, 1)
-
-        self.qtgui_eye_sink_x_0.set_y_label('Amplitude', "")
-
-        self.qtgui_eye_sink_x_0.enable_tags(True)
-        self.qtgui_eye_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
-        self.qtgui_eye_sink_x_0.enable_autoscale(True)
-        self.qtgui_eye_sink_x_0.enable_grid(True)
-        self.qtgui_eye_sink_x_0.enable_axis_labels(True)
-        self.qtgui_eye_sink_x_0.enable_control_panel(True)
-
-
-        labels = ['Signal 1', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
-            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ['blue', 'blue', 'blue', 'blue', 'blue',
-            'blue', 'blue', 'blue', 'blue', 'blue']
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-        styles = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        markers = [-1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1]
-
-
-        for i in range(1):
-            if len(labels[i]) == 0:
-                self.qtgui_eye_sink_x_0.set_line_label(i, "Eye[Data {0}]".format(i))
-            else:
-                self.qtgui_eye_sink_x_0.set_line_label(i, labels[i])
-            self.qtgui_eye_sink_x_0.set_line_width(i, widths[i])
-            self.qtgui_eye_sink_x_0.set_line_color(i, colors[i])
-            self.qtgui_eye_sink_x_0.set_line_style(i, styles[i])
-            self.qtgui_eye_sink_x_0.set_line_marker(i, markers[i])
-            self.qtgui_eye_sink_x_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_eye_sink_x_0_win = sip.wrapinstance(self.qtgui_eye_sink_x_0.qwidget(), Qt.QWidget)
-        self.top_layout.addWidget(self._qtgui_eye_sink_x_0_win)
         self.pdu_pdu_to_tagged_stream_0 = pdu.pdu_to_tagged_stream(gr.types.byte_t, 'packet_len')
         self.pdu_pdu_to_stream_x_0 = pdu.pdu_to_stream_b(pdu.EARLY_BURST_APPEND, 64)
         self.network_udp_sink_0 = network.udp_sink(gr.sizeof_short, 1, 'localhost', 7355, 0, 1472, True)
         self.network_socket_pdu_0 = network.socket_pdu('UDP_SERVER', '0.0.0.0', '1234', 10000, False)
+        self.interp_fir_filter_xxx_1 = filter.interp_fir_filter_ccc(rf_multiplier, [1,0,0,0])
+        self.interp_fir_filter_xxx_1.declare_sample_delay(0)
         self.interp_fir_filter_xxx_0 = filter.interp_fir_filter_fff(1, [0.06480373442173004,0.14118190109729767,0.24622690677642822,0.3437711000442505,0.38422060012817383,0.3437711000442505,0.24622690677642822,0.14118190109729767,0.06480373442173004,0.02381213940680027])
         self.interp_fir_filter_xxx_0.declare_sample_delay(0)
         self.digital_scrambler_bb_0 = digital.scrambler_bb(0x21, 0x00, 16)
-        self.blocks_throttle_1 = blocks.throttle(gr.sizeof_float*1, samp_rate,True)
         self.blocks_repeat_0 = blocks.repeat(gr.sizeof_char*1, multiplier)
         self.blocks_float_to_short_0 = blocks.float_to_short(1, 5000)
         self.blocks_char_to_float_0 = blocks.char_to_float(1, 1)
         self.blocks_add_const_vxx_0 = blocks.add_const_ff(-0.5)
+        self.analog_nbfm_tx_0 = analog.nbfm_tx(
+        	audio_rate=samp_rate,
+        	quad_rate=samp_rate,
+        	tau=75e-6,
+        	max_dev=3e3,
+        	fh=-1.0,
+                )
 
 
         ##################################################
@@ -157,14 +147,15 @@ class AX25_Tx(gr.top_block, Qt.QWidget):
         self.msg_connect((self.network_socket_pdu_0, 'pdus'), (self.pdu_pdu_to_stream_x_0, 'pdus'))
         self.msg_connect((self.satellites_hdlc_framer_0, 'out'), (self.pdu_pdu_to_tagged_stream_0, 'pdus'))
         self.msg_connect((self.satellites_kiss_to_pdu_0, 'out'), (self.satellites_hdlc_framer_0, 'in'))
+        self.connect((self.analog_nbfm_tx_0, 0), (self.interp_fir_filter_xxx_1, 0))
         self.connect((self.blocks_add_const_vxx_0, 0), (self.interp_fir_filter_xxx_0, 0))
         self.connect((self.blocks_char_to_float_0, 0), (self.blocks_add_const_vxx_0, 0))
         self.connect((self.blocks_float_to_short_0, 0), (self.network_udp_sink_0, 0))
         self.connect((self.blocks_repeat_0, 0), (self.blocks_char_to_float_0, 0))
-        self.connect((self.blocks_throttle_1, 0), (self.blocks_float_to_short_0, 0))
-        self.connect((self.blocks_throttle_1, 0), (self.qtgui_eye_sink_x_0, 0))
         self.connect((self.digital_scrambler_bb_0, 0), (self.blocks_repeat_0, 0))
-        self.connect((self.interp_fir_filter_xxx_0, 0), (self.blocks_throttle_1, 0))
+        self.connect((self.interp_fir_filter_xxx_0, 0), (self.analog_nbfm_tx_0, 0))
+        self.connect((self.interp_fir_filter_xxx_0, 0), (self.blocks_float_to_short_0, 0))
+        self.connect((self.interp_fir_filter_xxx_1, 0), (self.uhd_usrp_sink_0, 0))
         self.connect((self.pdu_pdu_to_stream_x_0, 0), (self.satellites_kiss_to_pdu_0, 0))
         self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.satellites_nrzi_encode_0, 0))
         self.connect((self.satellites_nrzi_encode_0, 0), (self.digital_scrambler_bb_0, 0))
@@ -185,7 +176,6 @@ class AX25_Tx(gr.top_block, Qt.QWidget):
         self.multiplier = multiplier
         self.set_samp_rate(self.data_rate*self.multiplier)
         self.blocks_repeat_0.set_interpolation(self.multiplier)
-        self.qtgui_eye_sink_x_0.set_samp_per_symbol(self.multiplier)
 
     def get_data_rate(self):
         return self.data_rate
@@ -199,14 +189,21 @@ class AX25_Tx(gr.top_block, Qt.QWidget):
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.blocks_throttle_1.set_sample_rate(self.samp_rate)
-        self.qtgui_eye_sink_x_0.set_samp_rate(self.samp_rate)
+        self.uhd_usrp_sink_0.set_samp_rate(self.samp_rate*self.rf_multiplier)
+
+    def get_rf_multiplier(self):
+        return self.rf_multiplier
+
+    def set_rf_multiplier(self, rf_multiplier):
+        self.rf_multiplier = rf_multiplier
+        self.uhd_usrp_sink_0.set_samp_rate(self.samp_rate*self.rf_multiplier)
 
     def get_freq(self):
         return self.freq
 
     def set_freq(self, freq):
         self.freq = freq
+        self.uhd_usrp_sink_0.set_center_freq(self.freq, 0)
 
 
 
